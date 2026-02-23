@@ -1,4 +1,4 @@
-# FOtT - Five One to Two
+# FOtT - *F*ive *O*ne *t*o *T*wo
 
 An automation tool that makes dialog clearer when converting 5.1 surround audio into stereo, by boosting the center channel (where dialogue usually lives) while keeping the rest of the mix balanced.
 ## What it does
