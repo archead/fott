@@ -1,8 +1,11 @@
-import sqlite3, os, subprocess, json, sys, argparse
+import sqlite3, os, subprocess, json, argparse, shutil
 from datetime import datetime
+from pathlib import Path
 
 STREAM_TITLE = "Stereo (Boosted Dialogue)"
-SUPPORTED_EXTENSIONS = ["mkv", "mp4"]
+SUPPORTED_EXTENSIONS = [".mkv", ".mp4"]
+ARCHIVE_FOLDER_NAME = "fott_archive"
+
 def main():
 
     connection = sqlite3.connect("fott.db")
@@ -23,97 +26,46 @@ def main():
     parser.add_argument("--dry", help="Perform a dry run", action="store_true")
     args = parser.parse_args()
 
-    working_directory = os.getcwd()
-    print(working_directory)
+    print("\n[Starting fott...]")
 
+    working_directory = Path.cwd()
     file_list = os.listdir(working_directory)
 
     for file in file_list:
-        if "." not in file:
+        
+        file = Path(file)
+        if file.suffix not in SUPPORTED_EXTENSIONS:
+            print("[Warning]", file.name, "\nFile/Directory not supported, skipping...\n")
             continue
-        if file.rsplit(".", 1)[1] not in SUPPORTED_EXTENSIONS:
-            continue
-
-        full_path = os.path.join(working_directory, file)
-        cmd = [
-            "ffprobe",
-            "-v", "error",
-            "-show_streams",
-            "-select_streams", "a",
-            "-print_format", "json",
-            full_path
-        ]
-        p = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        info = json.loads(p.stdout)
-
-        streams = info["streams"]
-        stream_count = len(streams)
-        target_stream = 0
 
         print("\n[Current file]:", file)
-
-        if (stream_count > 1):
-            print("\nMultiple candidates detected, please choose target stream:\n")
-            
-            candidates = []
-
-            for audio_index, s in enumerate(streams):
-                if s.get("channels") < 6:
-                    continue
-
-                tags = s.get("tags", {})
-                stream_details = {
-                    "index": audio_index,
-                    "title": tags.get("title", "missing info"),
-                    "lang": tags.get("language", "missing info")
-                }
-                candidates.append(stream_details)
-            
-            valid_options = [o["index"] for o in candidates]
-            
-            while True:
-                for candidate in candidates:
-                    print(
-                        "Stream #[", candidate["index"], "] :",
-                        "\nTitle: ", candidate["title"],
-                        "\nLanguage: ", candidate["lang"], "\n",
-                        sep=""
-                    )
-
-                input_str = "Select Stream #"+ str(valid_options) + ":"
-                user_defined_target = int(input(input_str))
-
-                if user_defined_target in valid_options:
-                    target_stream = user_defined_target
-                    break
-                else:
-                    print("Please select valid Stream # []")
-
-        output_file = file.rsplit(".", 1)[0] + ".mkv"
-        output_file = "converted_"+output_file
-        print("[Creating]:", output_file)
-        output_file = os.path.join(working_directory, "converted_"+output_file)
-
-        convert_to_stereo(full_path, target_stream, stream_count, STREAM_TITLE, output_file, args.dry)
-
+       
+        full_path = file.absolute()
         
+        info = ffprobe_to_json(full_path)
+        target_stream = check_for_candidates(info)
+
+        output_file = Path(file)
+        output_file = output_file.with_name(output_file.stem + "_converted.mkv")
+        print("[Creating]:", output_file.name)
+
+        stream_count = len(info["streams"])
+        result = convert_to_stereo(full_path, target_stream, stream_count, STREAM_TITLE, output_file, args.dry)
+
+        if (result):
+            archive_file(file)
+            if not args.dry and output_file.exists():
+                output_file.rename(file.with_name(file.stem + ".mkv"))
+            else:
+                print("[Dry run] No file created")
+        
+        # placeholder for now
         sql = """
         INSERT INTO fott_media (source_path, source_name, coverted_name, converted_at)
         VALUES (?, ?, ?, ?)
         """
 
-        cursor.execute(sql, (
-            full_path,
-            file,
-            output_file,
-            datetime.now().isoformat(timespec="seconds"),
-        ))
-
-        connection.commit()
-        
-    
-
-def convert_to_stereo(input: str, target_stream: int, target_output_stream: int, stream_title: str, output: str, dry_run: bool = False):
+def convert_to_stereo(input: Path, target_stream: int, target_output_stream: int, stream_title: str, output: Path, dry_run: bool = False):
     if not dry_run:
         cmd = [
             "ffmpeg",
@@ -144,7 +96,72 @@ def convert_to_stereo(input: str, target_stream: int, target_output_stream: int,
             "-f", "null", "-"
         ]
 
-    subprocess.run(cmd, check=True)
+    result = subprocess.run(cmd, check=True)
+    return result
 
+def archive_file(src_file_path: Path):
+    archive_folder = Path.cwd() / ARCHIVE_FOLDER_NAME
+    archive_folder.mkdir(parents=True, exist_ok=True)
+    
+    dst = archive_folder / src_file_path.name
+    shutil.move(src_file_path, dst)
+    print("[Archived]:", src_file_path, "to", ARCHIVE_FOLDER_NAME)
+
+def ffprobe_to_json(file_path: Path):
+    cmd = [
+            "ffprobe",
+            "-v", "error",
+            "-show_streams",
+            "-select_streams", "a",
+            "-print_format", "json",
+            file_path
+        ]
+    p = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    return json.loads(p.stdout)
+
+def check_for_candidates(stream_info):
+    streams = stream_info["streams"]
+    stream_count = len(streams)
+    target_stream = 0 # default stream if no other candidates exist
+
+    if (stream_count > 1):
+        print("\nMultiple candidates detected, please choose target stream:\n")
+        
+        candidates = []
+
+        for audio_index, s in enumerate(streams):
+            if s.get("channels") < 6:
+                continue
+
+            tags = s.get("tags", {})
+            stream_details = {
+                "index": audio_index,
+                "title": tags.get("title", "missing info"),
+                "lang": tags.get("language", "missing info")
+            }
+            candidates.append(stream_details)
+        
+        valid_options = [o["index"] for o in candidates]
+        
+        while True:
+            for candidate in candidates:
+                print(
+                    "Stream #[", candidate["index"], "] :",
+                    "\nTitle: ", candidate["title"],
+                    "\nLanguage: ", candidate["lang"], "\n",
+                    sep=""
+                )
+
+            input_str = "Select Stream #"+ str(valid_options) + ":"
+            user_defined_target = int(input(input_str))
+
+            if user_defined_target in valid_options:
+                target_stream = user_defined_target
+                break
+            else:
+                print("Please select valid Stream # []")
+
+    return target_stream
+    
 if __name__ == "__main__":
     main()
