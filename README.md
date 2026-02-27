@@ -46,6 +46,16 @@ An automation tool that makes dialog clearer when converting 5.1 surround audio 
 
 ## Usage
 - run `fott.py` in any directory with video files
-    - use `--dry` to perform a dry run
+```
+usage: fott.py [-h] [--dry] [--auto-delete] target_dir
+
+positional arguments:
+  target_dir            Target directory
+
+options:
+  -h, --help            show this help message and exit
+  --dry                 Perform a dry run
+  --auto-delete         Auto delete original file after conversion
+```
 
 
