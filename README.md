@@ -43,3 +43,9 @@ An automation tool that makes dialog clearer when converting 5.1 surround audio 
 - Dialog is more prominent (boosted center channel)
 - Less “volume riding” during high dynamic range scenes (action/music vs. speech)
 - Still sounds like the original mix, just with clearer speech
+
+## Usage
+- run `fott.py` in any directory with video files
+    - use `--dry` to perform a dry run
+
+
