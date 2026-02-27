@@ -1,5 +1,5 @@
 import sqlite3, os, subprocess, json, argparse, shutil
-from datetime import datetime
+from blake3 import blake3
 from pathlib import Path
 
 STREAM_TITLE = "Stereo (Boosted Dialogue)"
@@ -8,38 +8,31 @@ ARCHIVE_FOLDER_NAME = "fott_archive"
 
 def main():
 
-    connection = sqlite3.connect("fott.db")
-    cursor = connection.cursor()
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS fott_media (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        
-        source_path     TEXT NOT NULL UNIQUE,
-        source_name     TEXT NOT NULL,
-        coverted_name   TEXT NOT NULL,
-        converted_at    TEXT NOT NULL
-    );
-    """)
-    connection.commit()
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--dry", help="Perform a dry run", action="store_true")
-    args = parser.parse_args()
+    dbcon = init_db()
+    args = init_args()
 
     print("\n[Starting fott...]")
 
-    working_directory = Path.cwd()
+    if args.target_dir != "":
+      working_directory = Path(args.target_dir)
+    else:
+        working_directory = Path.cwd()
+
     file_list = os.listdir(working_directory)
 
     for file in file_list:
         
-        file = Path(file)
+        file = working_directory / file
         if file.suffix not in SUPPORTED_EXTENSIONS:
             print("[Warning]", file.name, "\nFile/Directory not supported, skipping...\n")
             continue
 
         print("\n[Current file]:", file)
-       
+
+        print("[Generating Video ID]")
+        vid_id = hash_file(file)
+        print("[ID Generated]:", vid_id)
+
         full_path = file.absolute()
         
         info = ffprobe_to_json(full_path)
@@ -52,18 +45,14 @@ def main():
         stream_count = len(info["streams"])
         result = convert_to_stereo(full_path, target_stream, stream_count, STREAM_TITLE, output_file, args.dry)
 
-        if (result):
+        if result:
             archive_file(file)
             if not args.dry and output_file.exists():
                 output_file.rename(file.with_name(file.stem + ".mkv"))
+                mark_done(dbcon, vid_id, file, output_file)
             else:
                 print("[Dry run] No file created")
-        
-        # placeholder for now
-        sql = """
-        INSERT INTO fott_media (source_path, source_name, coverted_name, converted_at)
-        VALUES (?, ?, ?, ?)
-        """
+
 
 def convert_to_stereo(input: Path, target_stream: int, target_output_stream: int, stream_title: str, output: Path, dry_run: bool = False):
     if not dry_run:
@@ -100,7 +89,7 @@ def convert_to_stereo(input: Path, target_stream: int, target_output_stream: int
     return result
 
 def archive_file(src_file_path: Path):
-    archive_folder = Path.cwd() / ARCHIVE_FOLDER_NAME
+    archive_folder = src_file_path.parent / ARCHIVE_FOLDER_NAME
     archive_folder.mkdir(parents=True, exist_ok=True)
     
     dst = archive_folder / src_file_path.name
@@ -121,10 +110,11 @@ def ffprobe_to_json(file_path: Path):
 
 def check_for_candidates(stream_info):
     streams = stream_info["streams"]
-    stream_count = len(streams)
+    stream_count = len([s for s in streams if s.get("channels") == 6])
+
     target_stream = 0 # default stream if no other candidates exist
 
-    if (stream_count > 1):
+    if stream_count > 1:
         print("\nMultiple candidates detected, please choose target stream:\n")
         
         candidates = []
@@ -162,6 +152,45 @@ def check_for_candidates(stream_info):
                 print("Please select valid Stream # []")
 
     return target_stream
-    
+
+def init_db() -> sqlite3.Connection:
+    connection = sqlite3.connect("fott.db")
+    cursor = connection.cursor()
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS fott (
+        src_hash TEXT PRIMARY KEY,
+        src_path TEXT,
+        out_path TEXT,
+        converted_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+    connection.commit()
+    return connection
+
+def hash_file(file_path: Path, block=1024*1024):
+    hasher = blake3()
+    with open(file_path, "rb") as f:
+        while True:
+            data = f.read(block)
+            if not data: break
+            hasher.update(data)
+    return hasher.hexdigest()
+
+def mark_done(dbcon, src_hash, src_path,  out_path):
+    file_info = os.stat(src_path)
+    dbcon.execute(
+        "INSERT OR REPLACE INTO fott (src_hash, src_path, out_path, converted_at) VALUES (?, ?, ?, ?)",
+        (src_hash, str(src_path), str(out_path), file_info.st_mtime)
+    )
+    dbcon.commit()
+
+def init_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("target_dir", help="Target directory", type=str)
+    parser.add_argument("--dry", help="Perform a dry run", action="store_true")
+    parser.add_argument("--auto-delete", help="Auto delete original file after conversion", action="store_false")
+
+    return parser.parse_args()
+
 if __name__ == "__main__":
     main()
