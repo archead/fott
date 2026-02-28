@@ -1,4 +1,5 @@
 import sqlite3, os, subprocess, json, argparse, shutil
+from datetime import datetime
 from blake3 import blake3
 from pathlib import Path
 
@@ -20,36 +21,43 @@ def main():
 
     file_list = os.listdir(working_directory)
 
-    for file in file_list:
-        
-        file = working_directory / file
-        if file.suffix not in SUPPORTED_EXTENSIONS:
-            print("[Warning]", file.name, "\nFile/Directory not supported, skipping...\n")
+    current_file_counter = 0
+
+    for src_file in file_list:
+        current_file_counter += 1
+
+        src_file = working_directory / src_file
+        if src_file.suffix not in SUPPORTED_EXTENSIONS:
+            print("[Warning]:", src_file.name, "File/Directory not supported, skipping...\n")
             continue
 
-        print("\n[Current file]:", file)
+        print(f"\n[{current_file_counter}/{len(file_list)}]")
+        print("[Current file]:\n\t", src_file)
+        print("[Generating Video ID]:")
+        vid_id = hash_file(src_file)
+        print("\t", vid_id, sep="")
 
-        print("[Generating Video ID]")
-        vid_id = hash_file(file)
-        print("[ID Generated]:", vid_id)
+        if previously_converted(dbcon, vid_id, args.force):
+            continue
 
-        full_path = file.absolute()
+        full_path = src_file.absolute()
         
         info = ffprobe_to_json(full_path)
         target_stream = check_for_candidates(info)
 
-        output_file = Path(file)
+        output_file = Path(src_file)
         output_file = output_file.with_name(output_file.stem + "_converted.mkv")
-        print("[Creating]:", output_file.name)
+        print("[Creating]:\n\t", output_file.name)
 
         stream_count = len(info["streams"])
         result = convert_to_stereo(full_path, target_stream, stream_count, STREAM_TITLE, output_file, args.dry)
 
         if result:
-            archive_file(file)
+            archive_file(src_file)
             if not args.dry and output_file.exists():
-                output_file.rename(file.with_name(file.stem + ".mkv"))
-                mark_done(dbcon, vid_id, file, output_file)
+                output_file = output_file.rename(src_file.with_name(src_file.stem + ".mkv"))
+                out_hash = hash_file(output_file)
+                mark_done(dbcon, out_hash, src_file, output_file)
             else:
                 print("[Dry run] No file created")
 
@@ -94,7 +102,7 @@ def archive_file(src_file_path: Path):
     
     dst = archive_folder / src_file_path.name
     shutil.move(src_file_path, dst)
-    print("[Archived]:", src_file_path, "to", ARCHIVE_FOLDER_NAME)
+    print("[Archived]:\n\t", src_file_path, "to", ARCHIVE_FOLDER_NAME)
 
 def ffprobe_to_json(file_path: Path):
     cmd = [
@@ -158,7 +166,7 @@ def init_db() -> sqlite3.Connection:
     cursor = connection.cursor()
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS fott (
-        src_hash TEXT PRIMARY KEY,
+        out_hash TEXT PRIMARY KEY,
         src_path TEXT,
         out_path TEXT,
         converted_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -167,7 +175,7 @@ def init_db() -> sqlite3.Connection:
     connection.commit()
     return connection
 
-def hash_file(file_path: Path, block=1024*1024):
+def hash_file(file_path: Path, block=1024*1024) -> str:
     hasher = blake3()
     with open(file_path, "rb") as f:
         while True:
@@ -176,19 +184,42 @@ def hash_file(file_path: Path, block=1024*1024):
             hasher.update(data)
     return hasher.hexdigest()
 
-def mark_done(dbcon, src_hash, src_path,  out_path):
+def previously_converted(dbcon, file_hash: str, force_convert: bool) -> bool:
+    params = (file_hash,)
+    res = dbcon.execute( "SELECT src_path, converted_at FROM fott WHERE out_hash=?", params )
+    rows = res.fetchall()
+
+    if force_convert:
+        print("[Forced Conversion Enabled]")
+        return False
+
+    if rows:
+        print("[Warning]: File previously converted, skipping...")
+
+        for src_path, converted_at in rows:
+            path_info = Path(src_path)
+            print("\tSource file path:", path_info)
+            print("\tConversion Timestamp:", datetime.fromtimestamp(converted_at).strftime("%m-%d-%Y %H:%M"))
+            print("\tUse [-f] or [--force] to overwrite this!")
+
+        return True
+
+    return False
+
+def mark_done(dbcon, out_hash, src_path,  out_path):
     file_info = os.stat(src_path)
     dbcon.execute(
-        "INSERT OR REPLACE INTO fott (src_hash, src_path, out_path, converted_at) VALUES (?, ?, ?, ?)",
-        (src_hash, str(src_path), str(out_path), file_info.st_mtime)
+        "INSERT OR REPLACE INTO fott (out_hash, src_path, out_path, converted_at) VALUES (?, ?, ?, ?)",
+        (out_hash, str(src_path), str(out_path), file_info.st_mtime)
     )
     dbcon.commit()
 
 def init_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("target_dir", help="Target directory", type=str)
-    parser.add_argument("--dry", help="Perform a dry run", action="store_true")
-    parser.add_argument("--auto-delete", help="Auto delete original file after conversion", action="store_false")
+    parser.add_argument("-d", "--dry", help="Perform a dry run", action="store_true", default=False)
+    parser.add_argument("-f", "--force", help="Overwrite existing conversions", action="store_true", default=False)
+    parser.add_argument("--auto-delete", help="Auto delete original file after conversion", action="store_true", default=False)
 
     return parser.parse_args()
 
