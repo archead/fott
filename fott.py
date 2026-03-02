@@ -159,7 +159,7 @@ def ffprobe_to_json(file_path: Path):
             "-print_format", "json",
             file_path
         ]
-    p = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    p = subprocess.run(cmd, capture_output=True, text=True, check=True, encoding="utf-8")
     return json.loads(p.stdout)
 
 def check_for_candidates(stream_info):
@@ -259,7 +259,7 @@ def mark_done(dbcon,  out_path: Path, src_path: Path = None):
 
 def init_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("target_dir", help="Target directory or file, defaults to current", type=str)
+    parser.add_argument("target_dir", help="Target directory or file, defaults to current", type=str, default="", nargs="?")
     parser.add_argument("-d", "--dry", help="Perform a dry run", action="store_true", default=False)
     parser.add_argument("-s", "--scan", help="Scan directory for previously converted files and add them to the database", action="store_true", default=False)
     parser.add_argument("-f", "--force", help="Overwrite existing conversions", action="store_true", default=False)

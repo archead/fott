@@ -50,6 +50,11 @@ An automation tool that makes dialog clearer when converting 5.1 surround audio 
  - [ffmpeg](https://www.ffmpeg.org/download.html)
    - Windows: `winget install -e --id Gyan.FFmpeg`
 
+# Installation
+```
+pip install git+https://github.com/archead/fott
+```
+
 ## Usage
 - run `fott.py` in any directory with video files
 ```
@@ -64,6 +69,13 @@ options:
   -s, --scan     Scan directory for previously converted files and add them to the database
   -f, --force    Overwrite existing conversions
   --auto-delete  Auto delete original file after conversion
+```
+
+## Building
+This project uses [Poetry](https://python-poetry.org/) for a build system
+You can build it locally via:
+```
+poetry build
 ```
 
 
