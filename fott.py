@@ -1,6 +1,5 @@
 import sqlite3, os, subprocess, json, argparse, shutil
 from datetime import datetime
-from blake3 import blake3
 from pathlib import Path
 
 STREAM_TITLE = "Stereo (Boosted Dialogue)"
