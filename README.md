@@ -71,4 +71,11 @@ options:
   --auto-delete  Auto delete original file after conversion
 ```
 
+## Building
+This project uses [Poetry](https://python-poetry.org/) for a build system
+You can build it locally via:
+```
+poetry build
+```
+
 
