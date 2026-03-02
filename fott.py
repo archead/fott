@@ -1,4 +1,4 @@
-import sqlite3, os, subprocess, json, argparse, shutil
+import sqlite3, os, subprocess, json, argparse, shutil, tomllib
 from datetime import datetime
 from pathlib import Path
 
@@ -7,17 +7,45 @@ SUPPORTED_EXTENSIONS = [".mkv", ".mp4"]
 ARCHIVE_FOLDER_NAME = "fott_archive"
 
 def main():
-
-    dbcon = init_db()
-    args = init_args()
-
     print("\n[Starting fott...]")
 
+    args = init_args()
+    db_path = load_config()
+    dbcon = init_db(db_path)
+
     working_directory = Path.cwd() if args.target_dir == "" else Path(args.target_dir)
+
+    if args.config:
+        show_config()
+        return
 
     if args.scan: scan_directory(dbcon, working_directory)
 
     if not args.scan: convert_directory(dbcon, working_directory, args)
+
+def show_config():
+    with open("config.toml", "rb") as f:
+        config = tomllib.load(f)
+    user_config = config.get("config").get("user_defined_path")
+    db_path = Path(os.path.expandvars(config.get("database").get("path")))
+    if user_config == "":
+        print("Using default config")
+        print("[Database path]:", db_path)
+
+def load_config() -> Path:
+    with open("config.toml", "rb") as f:
+        config = tomllib.load(f)
+    user_config_path = config.get("config").get("user_defined_path")
+    db_path = Path(os.path.expandvars(config.get("database").get("path")))
+
+    if user_config_path == "":
+        return db_path
+
+    with open(user_config_path, "rb") as f:
+        user_config = tomllib.load(f)
+    db_path = Path(os.path.expandvars(user_config.get("database").get("path")))
+
+    return user_config_path
 
 def scan_directory(dbcon, working_directory: Path):
 
@@ -179,8 +207,13 @@ def check_for_candidates(stream_info):
 
     return target_stream
 
-def init_db() -> sqlite3.Connection:
-    connection = sqlite3.connect("fott.db")
+def init_db(db_path: Path) -> sqlite3.Connection:
+    db_path.mkdir(parents=True, exist_ok=True)
+    db_path = db_path / "fott.db"
+    print("[Loaded Database]:", db_path.absolute())
+    connection = sqlite3.connect(db_path)
+
+    connection = sqlite3.connect(db_path.absolute())
     cursor = connection.cursor()
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS fott (
@@ -231,6 +264,7 @@ def init_args() -> argparse.Namespace:
     parser.add_argument("-s", "--scan", help="Scan directory for previously converted files and add them to the database", action="store_true", default=False)
     parser.add_argument("-f", "--force", help="Overwrite existing conversions", action="store_true", default=False)
     parser.add_argument("--auto-delete", help="Auto delete original file after conversion", action="store_true", default=False)
+    parser.add_argument("--config", help="Display current config and it's path", action="store_true", default=False)
 
     return parser.parse_args()
 
