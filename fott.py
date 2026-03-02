@@ -131,7 +131,7 @@ def ffprobe_to_json(file_path: Path):
             "-print_format", "json",
             file_path
         ]
-    p = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    p = subprocess.run(cmd, capture_output=True, text=True, check=True, encoding="utf-8")
     return json.loads(p.stdout)
 
 def check_for_candidates(stream_info):
