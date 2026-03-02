@@ -13,16 +13,17 @@ def main():
 
     print("\n[Starting fott...]")
 
-    working_directory = Path.cwd()  if args.target_dir == "" else Path(args.target_dir)
+    working_directory = Path.cwd() if args.target_dir == "" else Path(args.target_dir)
 
     if args.scan: scan_directory(dbcon, working_directory)
 
     if not args.scan: convert_directory(dbcon, working_directory, args)
 
 def scan_directory(dbcon, working_directory: Path):
-    file_list = os.listdir(working_directory)
-    current_file_counter = 0
 
+    file_list = os.listdir(working_directory) if working_directory.is_dir() else [working_directory]
+
+    current_file_counter = 0
     for src_file in file_list:
         current_file_counter += 1
         src_file = working_directory / src_file
@@ -44,9 +45,10 @@ def supported_format(src_file: Path) -> bool:
     return True
 
 def convert_directory(dbcon, working_directory: Path, args: argparse.Namespace):
-    file_list = os.listdir(working_directory)
-    current_file_counter = 0
 
+    file_list = os.listdir(working_directory) if working_directory.is_dir() else [working_directory]
+
+    current_file_counter = 0
     for src_file in file_list:
         current_file_counter += 1
         src_file = working_directory / src_file
@@ -224,7 +226,7 @@ def mark_done(dbcon,  out_path: Path, src_path: Path = None):
 
 def init_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("target_dir", help="Target directory", type=str)
+    parser.add_argument("target_dir", help="Target directory or file, defaults to current", type=str)
     parser.add_argument("-d", "--dry", help="Perform a dry run", action="store_true", default=False)
     parser.add_argument("-s", "--scan", help="Scan directory for previously converted files and add them to the database", action="store_true", default=False)
     parser.add_argument("-f", "--force", help="Overwrite existing conversions", action="store_true", default=False)
