@@ -11,6 +11,14 @@ requires-python = ">=3.12"
 dependencies = [
 ]
 
+[project.urls]
+homepage = "https://github.com/archead/fott"
+repository = "https://github.com/archead/fott"
+documentation = "https://github.com/archead/fott/blob/main/README.md"
+
+[project.scripts]
+fott = 'fott:main'
+
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
