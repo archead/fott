@@ -14,34 +14,53 @@ def main():
 
     print("\n[Starting fott...]")
 
-    if args.target_dir != "":
-      working_directory = Path(args.target_dir)
-    else:
-        working_directory = Path.cwd()
+    working_directory = Path.cwd()  if args.target_dir == "" else Path(args.target_dir)
 
+    if args.scan: scan_directory(dbcon, working_directory)
+
+    if not args.scan: convert_directory(dbcon, working_directory, args)
+
+def scan_directory(dbcon, working_directory: Path):
     file_list = os.listdir(working_directory)
-
     current_file_counter = 0
 
     for src_file in file_list:
         current_file_counter += 1
-
         src_file = working_directory / src_file
-        if src_file.suffix not in SUPPORTED_EXTENSIONS:
-            print("[Warning]:", src_file.name, "File/Directory not supported, skipping...\n")
-            continue
+
+        print("\n[Current File]:", src_file.name)
+        if not supported_format(src_file): continue
+        if previously_converted(dbcon, src_file): continue
+
+        streams = ffprobe_to_json(src_file).get("streams")
+        for s in streams:
+            if s.get("tags").get("title") == STREAM_TITLE:
+                print("[Stream Found]: Added to database\n")
+                mark_done(dbcon, src_file)
+
+def supported_format(src_file: Path) -> bool:
+    if src_file.suffix not in SUPPORTED_EXTENSIONS:
+        print("[Warning]:", src_file.name, "File/Directory not supported, skipping...\n")
+        return False
+    return True
+
+def convert_directory(dbcon, working_directory: Path, args: argparse.Namespace):
+    file_list = os.listdir(working_directory)
+    current_file_counter = 0
+
+    for src_file in file_list:
+        current_file_counter += 1
+        src_file = working_directory / src_file
+        if not supported_format(src_file): continue
 
         print(f"\n[{current_file_counter}/{len(file_list)}]")
         print("[Current file]:\n\t", src_file)
-        print("[Generating Video ID]:")
-        vid_id = hash_file(src_file)
-        print("\t", vid_id, sep="")
 
-        if previously_converted(dbcon, vid_id, args.force):
+        if previously_converted(dbcon, src_file, args.force):
             continue
 
         full_path = src_file.absolute()
-        
+
         info = ffprobe_to_json(full_path)
         target_stream = check_for_candidates(info)
 
@@ -56,11 +75,9 @@ def main():
             archive_file(src_file)
             if not args.dry and output_file.exists():
                 output_file = output_file.rename(src_file.with_name(src_file.stem + ".mkv"))
-                out_hash = hash_file(output_file)
-                mark_done(dbcon, out_hash, src_file, output_file)
+                mark_done(dbcon, output_file, src_file)
             else:
                 print("[Dry run] No file created")
-
 
 def convert_to_stereo(input: Path, target_stream: int, target_output_stream: int, stream_title: str, output: Path, dry_run: bool = False):
     if not dry_run:
@@ -166,51 +183,43 @@ def init_db() -> sqlite3.Connection:
     cursor = connection.cursor()
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS fott (
-        out_hash TEXT PRIMARY KEY,
+        id INTEGER PRIMARY KEY,
         src_path TEXT,
         out_path TEXT,
-        converted_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        out_size INTEGER,
+        out_mtime_ns INTEGER,
+        converted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (out_path, out_size, out_mtime_ns)
     );
     """)
     connection.commit()
     return connection
 
-def hash_file(file_path: Path, block=1024*1024) -> str:
-    hasher = blake3()
-    with open(file_path, "rb") as f:
-        while True:
-            data = f.read(block)
-            if not data: break
-            hasher.update(data)
-    return hasher.hexdigest()
-
-def previously_converted(dbcon, file_hash: str, force_convert: bool) -> bool:
-    params = (file_hash,)
-    res = dbcon.execute( "SELECT src_path, converted_at FROM fott WHERE out_hash=?", params )
-    rows = res.fetchall()
-
+def previously_converted(dbcon, out_path: Path, force_convert: bool = False) -> bool:
     if force_convert:
         print("[Forced Conversion Enabled]")
         return False
+    stats = out_path.stat()
+    params = (str(out_path), stats.st_size, stats.st_mtime_ns)
+    res = dbcon.execute( "SELECT converted_at FROM fott WHERE out_path=? AND out_size=? AND out_mtime_ns=?", params )
+    rows = res.fetchall()
 
     if rows:
         print("[Warning]: File previously converted, skipping...")
 
-        for src_path, converted_at in rows:
-            path_info = Path(src_path)
-            print("\tSource file path:", path_info)
-            print("\tConversion Timestamp:", datetime.fromtimestamp(converted_at).strftime("%m-%d-%Y %H:%M"))
+        for (converted_at,) in rows:
+            print("\tConversion Timestamp:", converted_at)
             print("\tUse [-f] or [--force] to overwrite this!")
 
         return True
 
     return False
 
-def mark_done(dbcon, out_hash, src_path,  out_path):
-    file_info = os.stat(src_path)
+def mark_done(dbcon,  out_path: Path, src_path: Path = None):
+    stats = out_path.stat()
     dbcon.execute(
-        "INSERT OR REPLACE INTO fott (out_hash, src_path, out_path, converted_at) VALUES (?, ?, ?, ?)",
-        (out_hash, str(src_path), str(out_path), file_info.st_mtime)
+        "INSERT OR REPLACE INTO fott (src_path, out_path, out_size, out_mtime_ns) VALUES (?, ?, ?, ?)",
+        (str(src_path), str(out_path), stats.st_size, stats.st_mtime_ns)
     )
     dbcon.commit()
 
@@ -218,6 +227,7 @@ def init_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("target_dir", help="Target directory", type=str)
     parser.add_argument("-d", "--dry", help="Perform a dry run", action="store_true", default=False)
+    parser.add_argument("-s", "--scan", help="Scan directory for previously converted files and add them to the database", action="store_true", default=False)
     parser.add_argument("-f", "--force", help="Overwrite existing conversions", action="store_true", default=False)
     parser.add_argument("--auto-delete", help="Auto delete original file after conversion", action="store_true", default=False)
 
