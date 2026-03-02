@@ -50,6 +50,11 @@ An automation tool that makes dialog clearer when converting 5.1 surround audio 
  - [ffmpeg](https://www.ffmpeg.org/download.html)
    - Windows: `winget install -e --id Gyan.FFmpeg`
 
+# Installation
+```
+pip install git+https://github.com/archead/fott
+```
+
 ## Usage
 - run `fott.py` in any directory with video files
 ```
