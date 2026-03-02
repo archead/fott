@@ -44,13 +44,19 @@ An automation tool that makes dialog clearer when converting 5.1 surround audio 
 - Less “volume riding” during high dynamic range scenes (action/music vs. speech)
 - Still sounds like the original mix, just with clearer speech
 
+## Requirements
+ - [Python](https://www.python.org/downloads/)
+   - 3.12 or later
+ - [ffmpeg](https://www.ffmpeg.org/download.html)
+   - Windows: `winget install -e --id Gyan.FFmpeg`
+
 ## Usage
 - run `fott.py` in any directory with video files
 ```
 usage: fott.py [-h] [-d] [-s] [-f] [--auto-delete] target_dir
 
 positional arguments:
-  target_dir     Target directory
+  target_dir     Target directory or file, defaults to current
 
 options:
   -h, --help     show this help message and exit
