@@ -1,5 +1,4 @@
 import sqlite3, os, subprocess, json, argparse, shutil, tomllib
-from datetime import datetime
 from pathlib import Path
 from importlib.resources import files, as_file
 
@@ -39,14 +38,13 @@ def show_config():
     print("Using default config")
     print("[Database path]:", db_path)
 
-    with open("config.toml", "r") as f:
-        for line in f:
-            print(line, end='')
+    data = (files("fott") / "config.toml").read_text()
+    for line in data:
+        print(line, end='')
 
 def load_config() -> Path:
     data = (files("fott") / "config.toml").read_text()
     config = tomllib.loads(data)
-
 
     user_config_path = config.get("config").get("user_defined_path")
     db_path = Path(os.path.expandvars(config.get("database").get("path")))
@@ -54,8 +52,8 @@ def load_config() -> Path:
     if user_config_path == "":
         return db_path
 
-    with open(user_config_path, "rb") as f:
-        user_config = tomllib.load(f)
+    data = (files("fott") / "config.toml").read_text()
+    user_config = tomllib.loads(data)
     db_path = Path(os.path.expandvars(user_config.get("database").get("path")))
 
     return user_config_path
