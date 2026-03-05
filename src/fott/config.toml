@@ -1,5 +1,5 @@
 [database]
-path = "%appdata%/fott/"
+path = "%appdata%/fott/fott.db"
 
 [config]
-user_defined_path = ""
+path = "%appdata%/fott/config.toml"

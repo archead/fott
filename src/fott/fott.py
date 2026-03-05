@@ -1,6 +1,6 @@
-import sqlite3, os, subprocess, json, argparse, shutil, tomllib
+import sqlite3, os, subprocess, json, argparse, shutil, tomllib, tomli_w
 from pathlib import Path
-from importlib.resources import files, as_file
+from importlib.resources import files
 
 STREAM_TITLE = "Stereo (Boosted Dialogue)"
 SUPPORTED_EXTENSIONS = [".mkv", ".mp4"]
@@ -10,53 +10,69 @@ def main():
     print("\n[Starting fott...]")
 
     args = init_args()
-    db_path = load_config()
-    dbcon = init_db(db_path)
+    config = load_config()
+    dbcon = init_db(Path(config["database"]["path"]))
 
     working_directory = Path.cwd() if args.target_dir == "" else Path(args.target_dir)
 
+    if args.set_config:
+        set_config_path(config, args.set_config)
+        return
+
     if args.config:
-        show_config()
+        config_path = Path(config["config"].get("path"))
+        show_config(Path(config_path))
         return
 
     if args.scan: scan_directory(dbcon, working_directory)
 
     if not args.scan: convert_directory(dbcon, working_directory, args)
 
-def show_config():
+def show_config(config_path: Path):
+    print("[Current Config]:\n")
+    with open(config_path, "r") as f:
+        print(f.read())
+
+def load_config():
     data = (files("fott") / "config.toml").read_text()
-    config = tomllib.loads(data)
+    template_config = tomllib.loads(data)
 
-    user_config_path = config.get("config").get("user_defined_path")
+    config_path = Path(os.path.expandvars(template_config.get("config").get("path")))
 
-    if user_config_path != "":
-        path = Path(os.path.expandvars(user_config_path))
-        with open(path, "rb") as f:
+    # Check if base config already exists if not create it
+    if not config_path.is_file():
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.touch()
+        with open(config_path, "w") as f:
+            f.write(data)
+
+    # Open the base config
+    with open(config_path, "rb") as f:
+        config = tomllib.load(f)
+
+    # Expand environment variables i.e. %appdata%
+    config["database"]["path"] = os.path.expandvars(config["database"].get("path"))
+    config["config"]["path"] = os.path.expandvars(config["config"].get("path"))
+
+    current_config_path = Path(config["config"]["path"])
+
+    # Check if the current config path in the base config is different from the template one, if so, load that instead
+    if current_config_path != config_path:
+        with open(current_config_path, "rb") as f:
             config = tomllib.load(f)
 
-    db_path = Path(os.path.expandvars(config.get("database").get("path")))
-    print("Using default config")
-    print("[Database path]:", db_path)
+    config["database"]["path"] = os.path.expandvars(config["database"].get("path"))
+    config["config"]["path"] = os.path.expandvars(config["config"].get("path"))
 
+    return config
+
+def set_config_path(config, config_path: Path):
+    config["config"]["path"] = config_path
     data = (files("fott") / "config.toml").read_text()
-    for line in data:
-        print(line, end='')
+    template_config = tomllib.loads(data)
+    base_config_path = Path(os.path.expandvars(template_config["config"]["path"]))
 
-def load_config() -> Path:
-    data = (files("fott") / "config.toml").read_text()
-    config = tomllib.loads(data)
-
-    user_config_path = config.get("config").get("user_defined_path")
-    db_path = Path(os.path.expandvars(config.get("database").get("path")))
-
-    if user_config_path == "":
-        return db_path
-
-    data = (files("fott") / "config.toml").read_text()
-    user_config = tomllib.loads(data)
-    db_path = Path(os.path.expandvars(user_config.get("database").get("path")))
-
-    return user_config_path
+    base_config_path.write_text(tomli_w.dumps(config), encoding="utf-8")
 
 def scan_directory(dbcon, working_directory: Path):
 
@@ -219,12 +235,10 @@ def check_for_candidates(stream_info):
     return target_stream
 
 def init_db(db_path: Path) -> sqlite3.Connection:
-    db_path.mkdir(parents=True, exist_ok=True)
-    db_path = db_path / "fott.db"
-    print("[Loaded Database]:", db_path.absolute())
-    connection = sqlite3.connect(db_path)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    print("[Loaded Database]:", db_path)
 
-    connection = sqlite3.connect(db_path.absolute())
+    connection = sqlite3.connect(db_path)
     cursor = connection.cursor()
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS fott (
@@ -276,6 +290,7 @@ def init_args() -> argparse.Namespace:
     parser.add_argument("-f", "--force", help="Overwrite existing conversions", action="store_true", default=False)
     parser.add_argument("--auto-delete", help="Auto delete original file after conversion", action="store_true", default=False)
     parser.add_argument("--config", help="Display current config and it's path", action="store_true", default=False)
+    parser.add_argument("--set-config", help="Set config path", type=str, default=None)
 
     return parser.parse_args()
 
