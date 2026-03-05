@@ -29,7 +29,7 @@ def main():
     if not args.scan: convert_directory(dbcon, working_directory, args)
 
 def show_config(config_path: Path):
-    print("[Current Config]:\n")
+    print("[Current Config]:", config_path, "\n")
     with open(config_path, "r") as f:
         print(f.read())
 
@@ -286,13 +286,13 @@ def mark_done(dbcon,  out_path: Path, src_path: Path = None):
     dbcon.commit()
 
 def init_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(prog="fott")
     parser.add_argument("target_dir", help="Target directory or file, defaults to current", type=str, default="", nargs="?")
     parser.add_argument("-d", "--dry", help="Perform a dry run", action="store_true", default=False)
     parser.add_argument("-s", "--scan", help="Scan directory for previously converted files and add them to the database", action="store_true", default=False)
     parser.add_argument("-f", "--force", help="Overwrite existing conversions", action="store_true", default=False)
     parser.add_argument("--auto-delete", help="Auto delete original file after conversion", action="store_true", default=False)
-    parser.add_argument("--config", help="Display current config and it's path", action="store_true", default=False)
+    parser.add_argument("--config", help="Display current config and path", action="store_true", default=False)
     parser.add_argument("--set-config", help="Set config path", type=str, default=None)
 
     return parser.parse_args()
