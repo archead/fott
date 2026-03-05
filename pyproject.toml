@@ -9,6 +9,7 @@ license = {text = "GPL-3.0"}
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "tomli_w (>=1.2.0)"
 ]
 
 [tool.poetry]
