@@ -56,19 +56,25 @@ pip install git+https://github.com/archead/fott
 ```
 
 ## Usage
-- run `fott.py` in any directory with video files
+- run `fott` in any directory with video files
 ```
-usage: fott.py [-h] [-d] [-s] [-f] [--auto-delete] target_dir
+usage: fott [-h] [-d] [-s] [-f] [--auto-delete] [--config]
+            [--set-config SET_CONFIG]
+            [target_dir]
 
 positional arguments:
-  target_dir     Target directory or file, defaults to current
+  target_dir            Target directory or file, defaults to current
 
 options:
-  -h, --help     show this help message and exit
-  -d, --dry      Perform a dry run
-  -s, --scan     Scan directory for previously converted files and add them to the database
-  -f, --force    Overwrite existing conversions
-  --auto-delete  Auto delete original file after conversion
+  -h, --help            show this help message and exit
+  -d, --dry             Perform a dry run
+  -s, --scan            Scan directory for previously converted files and add
+                        them to the database
+  -f, --force           Overwrite existing conversions
+  --auto-delete         Auto delete original file after conversion
+  --config              Display current config and path
+  --set-config SET_CONFIG
+                        Set config path
 ```
 
 ## Building
