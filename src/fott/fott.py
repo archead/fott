@@ -68,11 +68,14 @@ def load_config():
 
 def set_config_path(config, config_path: Path):
     config["config"]["path"] = config_path
+
     data = (files("fott") / "config.toml").read_text()
     template_config = tomllib.loads(data)
     base_config_path = Path(os.path.expandvars(template_config["config"]["path"]))
 
     base_config_path.write_text(tomli_w.dumps(config), encoding="utf-8")
+
+    print("[Config Path Set]:", config_path)
 
 def scan_directory(dbcon, working_directory: Path):
 
